@@ -1,0 +1,94 @@
+#!/sbin/sh
+# Author: cjybyjk (cjybyjk@gmail.com)
+# script for add Project Treble support
+
+OUTFD=$2
+ZIP=$3
+TMPDIR=/dev/tmpPT
+
+ui_print() {
+	echo -e "$1"
+}
+
+ui_print " "
+ui_print "********************"
+ui_print "  TrebleAnyDevice"
+ui_print "  Author: cjybyjk"
+ui_print "********************"
+ui_print " "
+
+ui_print "- Extracting files"
+mkdir -p $TMPDIR
+cd $TMPDIR
+unzip -o "$ZIP" 
+
+PATH=$TMPDIR/bin/:$PATH
+
+ui_print "! WARNING: This script may brick your device"
+ui_print "  and/or you will lost all of your data"
+
+### TODO: use volume key to continue/exit
+
+ui_print "- Mounting system"
+mount /system
+
+ui_print "- Copying vendor files to tmp..."
+mkdir $TMPDIR/vendorTMP
+cp -r /system/vendor/ $TMPDIR/vendorTMP/
+
+RESIZE_PARTITION="/dev/block/bootdevice/by-name/system"
+ui_print "- Reading size of $RESIZE_PARTITION"
+PART_SIZE=`df -k $RESIZE_PARTITION | tail -n 1 | awk '{print \$1}'`
+ui_print "  Size(KB): $PART_SIZE"
+
+ui_print "- Unmounting $RESIZE_PARTITION"
+umount -f $RESIZE_PARTITION
+
+VENDOR_SIZE=`du -s $TMPDIR/vendorTMP/ | awk '{print \$1}'`
+let "VENDOR_SIZE=VENDOR_SIZE+50*1024"
+let "RESIZE_TO=PART_SIZE-VENDOR_SIZE"
+ui_print "- size of vendor partition: $VENDOR_SIZE\KB"
+ui_print "- Resize $RESIZE_PARTITION to $RESIZE_TO\KB"
+e2fsck -f $RESIZE_PARTITION
+resize2fs $RESIZE_PARTITION $RESIZE_TO\K
+
+ui_print "- Creating new partition..."
+### TODO:Make a full fdisk-arm or gdisk-arm
+echo -e "n\n\n\nwq" | fdisk $PART_DISK
+### TODO:Finish Auto-recgonize partition
+VENDOR_PART=
+
+ui_print "- Formatting $VENDOR_PART by using mke2fs"
+mke2fs -t ext4 -L vendor $VENDOR_PART
+
+ui_print "- Mounting $VENDOR_PART"
+mkdir $TMPDIR/vendor
+mount $VENDOR_PART $TMPDIR/vendor
+ui_print "- Copying vendor files to vendor partition"
+cp -r $TMPDIR/vendorTMP/vendor/* $TMPDIR/vendor/
+
+ui_print "- Extracting boot image"
+mkboot $BOOT_PART "$TMPDIR/bootPatch"
+
+ui_print "- Patching boot image"
+FSTAB_ADD="$VENDOR_PART  /vendor  ext4  ro,barrier=1  wait"
+FSTAB_PATH="$TMPDIR/bootPatch/ramdisk/fstab.qcom"
+[ -f "$FSTAB_PATH" ] && cat $FSTAB_ADD >> $FSTAB_PATH
+### TODO:patch dts
+
+[ -L "$TMPDIR/bootPatch/ramdisk/vendor" ] && rm $TMPDIR/bootPatch/ramdisk/vendor
+mkdir $TMPDIR/bootPatch/ramdisk/vendor
+sed -i "s/cmd_line='/cmd_line='androidboot.selinux=permissive /g" $TMPDIR/bootPatch/img_info
+
+ui_print "- Repacking boot image"
+mkboot "$TMPDIR/bootPatch" "$TMPDIR/boot_patched.img"
+
+ui_print "- Flashing patched boot image"
+dd if=$TMPDIR/boot_patched.img of=$BOOT_PART
+
+ui_print "- Cleaning files"
+cd /
+rm -rf $TMPDIR
+
+ui_print "- Done"
+exit 0

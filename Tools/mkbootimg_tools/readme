@@ -1,0 +1,8 @@
+Cloned from https://github.com/xiaolu/mkbootimg_tools
+
+removed:
+ARM
+dtbTool
+dtbtool.txt
+dtbToolCM
+dtc
