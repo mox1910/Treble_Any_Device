@@ -1,9 +1,11 @@
-#generate_vintf
+# generate_vintf
+
 Usage:
 ----------
     ./generate.sh
 
-#assemble_vintf
+# assemble_vintf
+
 Checks if a given manifest / matrix file is valid and fill in build-time flags into the given file.
 
 Usage:
